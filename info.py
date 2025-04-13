@@ -11,20 +11,20 @@ SESSION = environ.get('SESSION', 'Webmslandersbot')  #Don't change it
 API_ID = int(environ.get('API_ID', ''))
 API_HASH = environ.get('API_HASH', '')
 BOT_TOKEN = environ.get('BOT_TOKEN', "")
-BOT_USERNAME = environ.get("BOT_USERNAME", 'FilesToLinkPro_bot') # without @ 
+BOT_USERNAME = environ.get("BOT_USERNAME", 'FileStream_MsBot') # without @ 
 
 # Admins, Channels & Users
-BIN_CHANNEL = int(environ.get("BIN_CHANNEL", '-1002456017788')) # admin your channel in stream 
-LOG_CHANNEL = int(environ.get("LOG_CHANNEL", '-1002421781174')) # admin your channel in users log 
-ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '6317211079').split()] # 3567788, 678899, 5889467
-OWNER_USERNAME = environ.get("OWNER_USERNAME", 'AMANI_JII') # without @ 
+BIN_CHANNEL = int(environ.get("BIN_CHANNEL", '-1002153513383')) # admin your channel in stream 
+LOG_CHANNEL = int(environ.get("LOG_CHANNEL", '-1002153513383')) # admin your channel in users log 
+ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '7298415492').split()] # 3567788, 678899, 5889467
+OWNER_USERNAME = environ.get("OWNER_USERNAME", 'Prime_SpoTBot') # without @ 
 
 # pics information
-PICS = environ.get('PICS', 'https://i.imghippo.com/files/LTn6406ni.jpg')
+PICS = environ.get('PICS', 'https://envs.sh/K8p.jpg')
 
 # channel link information
-CHANNEL = environ.get('CHANNEL', 'https://t.me/MSLANDERS')
-SUPPORT = environ.get('SUPPORT', 'https://t.me/MSLANDERS_HELP')
+CHANNEL = environ.get('CHANNEL', 'https://t.me/Prime_SpoT')
+SUPPORT = environ.get('SUPPORT', 'https://t.me/Prime_SpoTBot')
 
 #Dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
@@ -48,7 +48,7 @@ DATABASE_NAME = environ.get('DATABASE_NAME', "Cluster0")
 
 # fsub  information
 AUTH_PICS = environ.get('AUTH_PICS', 'https://i.imghippo.com/files/oUyy1541rKc.jpg')              
-AUTH_CHANNEL = (environ.get("AUTH_CHANNEL", "-1002178835257"))
+AUTH_CHANNEL = (environ.get("AUTH_CHANNEL", "-1002157548233"))
 FSUB = environ.get("FSUB", True)
 
 # port information
