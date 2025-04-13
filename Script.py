@@ -18,7 +18,7 @@ Add me to your channel to instantly generate links for any downloadable media. O
     
     ADMIN_CMD_TXT = """<b>
     
-ADMIN KI JAI HO 😎
+ADMIN  COMMANDS 😎
 
 /broadcast send massage users 
 /users To get users details
@@ -55,10 +55,10 @@ Cʜᴀɴɴᴇʟ Uꜱᴀɢᴇ:
 🔞 ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ.
 
 📮 Hᴇʟᴘ & Sᴜᴘᴘᴏʀᴛ:
-• Uᴘᴅᴀᴛᴇꜱ: @MSLANDERS
-• Sᴜᴘᴘᴏʀᴛ: @MSLANDERS_HELP
+• Uᴘᴅᴀᴛᴇꜱ: @Prime_SpoT
+• Sᴜᴘᴘᴏʀᴛ: @Prime_SpoTBot
 
- <u><i>ʀᴇᴘᴏʀᴛ ʙᴜɢs ᴛᴏ  <a href='https://t.me/MSLANDERSTALK_BOT'>ᴅᴇᴠᴇʟᴏᴘᴇʀ</a></u></i></b>"""
+ <u><i>ʀᴇᴘᴏʀᴛ ʙᴜɢs ᴛᴏ  <a href='https://t.me/Prime_SpoTBot'>ᴅᴇᴠᴇʟᴏᴘᴇʀ</a></u></i></b>"""
 
 #Dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
@@ -70,8 +70,8 @@ Nᴀᴍᴇ - {}"""
     ABOUT_TXT = """<b>╔═══❰ {} ❱══════❍
 ║╭━━━━━━━━━━━━━━━━━━➣
 ║┣⪼🤖ᴍʏ ɴᴀᴍᴇ : {}
-║┣⪼👦ᴅᴇᴠᴇʟᴏᴘᴇʀ : <a href='https://t.me/MSLANDERSTALK_BOT'>ᴄʜᴀᴛ ᴏᴡɴᴇʀ</a>
-║┣⪼❣️ᴜᴘᴅᴀᴛᴇ : <a href=https://t.me/mslanders>ʙᴀᴄᴋᴜᴘ ᴄʜᴀɴɴᴇʟ</a>
+║┣⪼👦ᴅᴇᴠᴇʟᴏᴘᴇʀ : <a href='https://t.me/Prime_SpoTBot'>ᴄʜᴀᴛ ᴏᴡɴᴇʀ</a>
+║┣⪼❣️ᴜᴘᴅᴀᴛᴇ : <a href=https://t.me/Prime_SpoT>ʙᴀᴄᴋᴜᴘ ᴄʜᴀɴɴᴇʟ</a>
 ║┣⪼⏲️ʙᴏᴛ ᴜᴘᴛɪᴍᴇ :- {}
 ║┣⪼📡Hᴏsᴛᴇᴅ ᴏɴ : ᴋᴏʏᴇʙ 
 ║┣⪼🗣️ʟᴀɴɢᴜᴀɢᴇ : ᴘʏᴛʜᴏɴ 
@@ -106,7 +106,7 @@ Nᴀᴍᴇ - {}"""
     CAPTION2_TXT = """
 <i><u>𝗬𝗼𝘂𝗿 𝗟𝗶𝗻𝗸 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 !</u></i>
 
-<b>📧 ꜰɪʟᴇ ɴᴀᴍᴇ :- </b> <i><a href={}>{}</a></i>
+<b>📧 ꜰɪʟᴇ ɴᴀᴍᴇ :- </b> <b><i>{}</i></b>
 
 <b>📦 ꜰɪʟᴇ sɪᴢᴇ :- </b> <i>{}</i>
 
