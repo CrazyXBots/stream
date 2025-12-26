@@ -1,11 +1,11 @@
-  import asyncio
-  from pyrogram.errors import RPCError
-  
-  async def safe_send(func, *args, **kwargs):
-      try:
-          return await func(*args, **kwargs)
-      except (RPCError, OSError, ConnectionResetError, asyncio.TimeoutError):
-          return None
+import asyncio
+from pyrogram.errors import RPCError
+
+async def safe_send(func, *args, **kwargs):
+    try:
+        return await func(*args, **kwargs)
+    except (RPCError, OSError, ConnectionResetError, asyncio.TimeoutError):
+        return None
     """
     Safely send media/messages via Pyrogram with retry logic.
     
