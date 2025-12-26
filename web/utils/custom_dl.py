@@ -8,7 +8,6 @@ from pyrogram import Client, utils, raw
 from web.utils.file_properties import get_file_ids
 from pyrogram.session import Session, Auth
 from pyrogram.errors import AuthBytesInvalid
-from web.server.exceptions import FileNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
 from web.utils.safe_send import safe_send
 import os
@@ -65,7 +64,7 @@ async def get_file_path(file_id: int, secure_hash: str) -> str:
     file_path = os.path.join("downloads", file_name)
 
     if not os.path.exists(file_path):
-        raise FileNotFound(f"File {file_name} not found")
+        raise FileNotFoundError(f"File {file_name} not found")
 
     return file_path
 
@@ -235,3 +234,4 @@ async def clean_cache(self) -> None:
         logging.debug("Cleaned the cache")
 
 # End of custom_dl.py
+
