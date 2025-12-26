@@ -85,7 +85,7 @@ async def stream_handler(request: web.Request):
             file_id = int(re.search(r"(\d+)", path).group(1))
             secure_hash = request.rel_url.query.get("hash")
 
-        file_path = await get_file_path(file_id, secure_hash)
+        file_path = f"downloads/{file_id}.mp4"
         file_size = os.path.getsize(file_path)
 
         range_header = request.headers.get("Range")
