@@ -10,6 +10,7 @@ from pyrogram.session import Session, Auth
 from pyrogram.errors import AuthBytesInvalid
 from web.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
+from web.utils.safe_send import safe_send
 
 #Dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
@@ -242,3 +243,4 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
