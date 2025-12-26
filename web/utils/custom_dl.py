@@ -194,10 +194,7 @@ class ByteStreamer:
         location = await self.get_location(file_id)
 
         try:
-            r = await safe_send(media_session, ...)
-
-r = await safe_send(media_session, ...)
-
+            r = await media_session.send(
                 raw.functions.upload.GetFile(
                     location=location, offset=offset, limit=chunk_size
                 ),
@@ -245,6 +242,3 @@ r = await safe_send(media_session, ...)
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
-
-
-
