@@ -196,52 +196,41 @@ class ByteStreamer:
         location = await self.get_location(file_id)
 
         try:
-    r = await media_session.safe_send(
-        raw.functions.upload.GetFile(
-            location=location,
-            offset=offset,
-            limit=chunk_size,
-        ),
-    )
+            r = await media_session.send(
+                raw.functions.upload.GetFile(
+                    location=location, offset=offset, limit=chunk_size
+                ),
+            )
+            if isinstance(r, raw.types.upload.File):
+                while True:
+                    chunk = r.bytes
+                    if not chunk:
+                        break
+                    elif part_count == 1:
+                        yield chunk[first_part_cut:last_part_cut]
+                    elif current_part == 1:
+                        yield chunk[first_part_cut:]
+                    elif current_part == part_count:
+                        yield chunk[:last_part_cut]
+                    else:
+                        yield chunk
 
-        if isinstance(r, raw.types.upload.File):
-            while True:
-                chunk = r.bytes
-                if not chunk:
-                    break
+                    current_part += 1
+                    offset += chunk_size
 
-                if part_count == 1:
-                    yield chunk[first_part_cut:last_part_cut]
-                elif current_part == 1:
-                    yield chunk[first_part_cut:]
-                elif current_part == part_count:
-                    yield chunk[:last_part_cut]
-                else:
-                    yield chunk
+                    if current_part > part_count:
+                        break
 
-                current_part += 1
-                offset += chunk_size
-
-                if current_part > part_count:
-                    break
-
-                try:
-                    r = await media_session.safe_send(
+                    r = await media_session.send(
                         raw.functions.upload.GetFile(
-                            location=location,
-                            offset=offset,
-                            limit=chunk_size,
+                            location=location, offset=offset, limit=chunk_size
                         ),
                     )
-                except Exception as e:
-                    logging.warning(f"Telegram stream stopped: {e}")
-                    break
-
-    except Exception as e:
-        logging.error(f"Yield file error: {e}")
-
-    finally:
-        work_loads[index] -= 1
+        except (TimeoutError, AttributeError):
+            pass
+        finally:
+            logging.debug("Finished yielding file with {current_part} parts.")
+            work_loads[index] -= 1
 
     
     async def clean_cache(self) -> None:
@@ -255,6 +244,4 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
-
-
 
