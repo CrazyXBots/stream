@@ -1,4 +1,4 @@
-FROM python:3.10.8-slim-buster
+FROM python:3.9-slim
 
 #Dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
@@ -20,3 +20,4 @@ COPY . /FILE_STREAM_BOT
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
 
 CMD ["python", "bot.py"]
+
