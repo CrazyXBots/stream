@@ -1,7 +1,7 @@
 import asyncio
 from pyrogram.errors import RPCError
 
-async def safe_send(func, *args, **kwargs):
+async def send(func, *args, **kwargs):
     try:
         return await func(*args, **kwargs)
     except (RPCError, OSError, ConnectionResetError, asyncio.TimeoutError):
