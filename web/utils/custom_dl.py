@@ -4,6 +4,7 @@ import logging
 from info import *
 from typing import Dict, Union
 from web.server import work_loads
+
 from pyrogram import Client, utils, raw
 from web.utils.file_properties import get_file_ids
 from pyrogram.session import Session, Auth
@@ -86,6 +87,8 @@ class ByteStreamer:
                     await media_session.start()
 
                 client.media_sessions[file_id.dc_id] = media_session
+                logging.debug(f"Created media session for DC {file_id.dc_id}")
+
             except Exception as e:
                 logging.error(f"Media session creation failed: {e}")
                 raise
@@ -167,13 +170,10 @@ class ByteStreamer:
                         break
                     except FloodWait as e:
                         wait_time = getattr(e, "value", None) or getattr(e, "seconds", None)
-                        if wait_time:
-                            logging.warning(f"FloodWait {wait_time}s, sleeping...")
-                            await asyncio.sleep(wait_time)
-                        else:
-                            await asyncio.sleep(2)
+                        logging.warning(f"FloodWait {wait_time}s, sleeping...")
+                        await asyncio.sleep(wait_time)
                     except (OSError, ConnectionResetError, asyncio.TimeoutError) as exc:
-                        logging.warning(f"Connection error retry {attempt+1}/5: {exc}")
+                        logging.warning(f"Connection retry {attempt+1}/5: {exc}")
                         await asyncio.sleep(2 ** attempt)
                 else:
                     logging.error("Failed to fetch chunk after retries")
