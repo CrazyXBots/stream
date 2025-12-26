@@ -8,48 +8,14 @@ from pyrogram import Client, utils, raw
 from web.utils.file_properties import get_file_ids
 from pyrogram.session import Session, Auth
 from pyrogram.errors import AuthBytesInvalid
+from web.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
-from web.utils.safe_send import safe_send
 
 #Dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
 
 class ByteStreamer:
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.file_size = os.path.getsize(file_path)
-
-    def get_range(self, range_header):
-        """Parse Range header: bytes=start-end"""
-        if not range_header:
-            return 0, self.file_size - 1
-
-        range_value = range_header.split("=")[-1]
-        start_str, end_str = range_value.split("-")
-
-        start = int(start_str) if start_str else 0
-        end = int(end_str) if end_str else self.file_size - 1
-
-        if end >= self.file_size:
-            end = self.file_size - 1
-
-        return start, end
-
-    def stream(self, start=0, end=None, chunk_size=1024 * 1024):
-        if end is None:
-            end = self.file_size - 1
-
-        with open(self.file_path, "rb") as f:
-            f.seek(start)
-            remaining = end - start + 1
-
-            while remaining > 0:
-                read_size = min(chunk_size, remaining)
-                data = f.read(read_size)
-                if not data:
-                    break
-                remaining -= len(data)
-                yield data
+    def __init__(self, client: Client):
         """A custom class that holds the cache of a specific client and class functions.
         attributes:
             client: the client that the cache is for.
@@ -228,7 +194,7 @@ class ByteStreamer:
         location = await self.get_location(file_id)
 
         try:
-            r = await media_session.safe_send(
+            r = await media_session.send(
                 raw.functions.upload.GetFile(
                     location=location, offset=offset, limit=chunk_size
                 ),
@@ -253,7 +219,7 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    r = await media_session.safe_send(
+                    r = await media_session.send(
                         raw.functions.upload.GetFile(
                             location=location, offset=offset, limit=chunk_size
                         ),
@@ -276,6 +242,3 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
-
-
-
