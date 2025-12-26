@@ -172,27 +172,29 @@ class ByteStreamer:
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
     
     async def yield_file(
-    self,
-    file_id: FileId,
-    index: int,
-    offset: int,
-    first_part_cut: int,
-    last_part_cut: int,
-    part_count: int,
-    chunk_size: int,
-) -> Union[str, None]:
-    """
-    Custom generator that yields the bytes of the media file.
-    """
-    client = self.client
-    work_loads[index] += 1
-    logging.debug(f"Starting to yielding file with client {index}.")
-    media_session = await self.generate_media_session(client, file_id)
+        self,
+        file_id: FileId,
+        index: int,
+        offset: int,
+        first_part_cut: int,
+        last_part_cut: int,
+        part_count: int,
+        chunk_size: int,
+    ) -> Union[str, None]:
+        """
+        Custom generator that yields the bytes of the media file.
+        Modded from <https://github.com/eyaadh/megadlbot_oss/blob/master/mega/telegram/utils/custom_download.py#L20>
+        Thanks to Eyaadh <https://github.com/eyaadh>
+        """
+        client = self.client
+        work_loads[index] += 1
+        logging.debug(f"Starting to yielding file with client {index}.")
+        media_session = await self.generate_media_session(client, file_id)
 
-    current_part = 1
-    location = await self.get_location(file_id)
+        current_part = 1
+        location = await self.get_location(file_id)
 
-    try:
+        try:
         r = await safe_send(media_session, ...)
         r = await raw.functions.upload.GetFile(
             location=location,
@@ -251,6 +253,7 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
 
 
