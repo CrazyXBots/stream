@@ -64,8 +64,7 @@ async def get_file_path(file_id: int, secure_hash: str) -> str:
     file_path = os.path.join("downloads", file_name)
 
     if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File {file_name} not found")
-
+    raise FileNotFoundError(f"File {file_name} not found")
     return file_path
 
 # ================= FILE PROPERTIES =================
@@ -234,4 +233,5 @@ async def clean_cache(self) -> None:
         logging.debug("Cleaned the cache")
 
 # End of custom_dl.py
+
 
