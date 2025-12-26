@@ -15,13 +15,31 @@ from web.utils.safe_send import safe_send
 #Dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
 
+import os
+
 class ByteStreamer:
-    def __init__(self, file_path):
+    def __init__(self, file_path: str):
         self.file_path = file_path
         self.file_size = os.path.getsize(file_path)
 
+    def get_range(self, range_header):
+        """Parse Range header: bytes=start-end"""
+        if not range_header:
+            return 0, self.file_size - 1
+
+        _, range_value = range_header.split("=")
+        start_str, end_str = range_value.split("-")
+
+        start = int(start_str) if start_str else 0
+        end = int(end_str) if end_str else self.file_size - 1
+
+        if end >= self.file_size:
+            end = self.file_size - 1
+
+        return start, end
+
     def stream(self, start=0, end=None, chunk_size=1024 * 1024):
-        if end is None or end >= self.file_size:
+        if end is None:
             end = self.file_size - 1
 
         with open(self.file_path, "rb") as f:
@@ -261,6 +279,7 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
 
 
