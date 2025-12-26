@@ -29,7 +29,7 @@ from web.server.clients import initialize_clients
 ppath = "plugins/*.py"
 files = glob.glob(ppath)
 Webmslandersbot.start()
-loop = asyncio.get_event_loop()
+loop = asyncio.get_running_loop()
 
 async def start():
     print('\n')
@@ -78,4 +78,5 @@ if __name__ == '__main__':
         loop.run_until_complete(start())
     except KeyboardInterrupt:
         logging.info('----------------------- Service Stopped -----------------------')
+
 
