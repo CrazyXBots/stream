@@ -86,11 +86,10 @@ class ByteStreamer:
 
     if not os.path.exists(file_path):
         # If file does not exist, raise exception
-        raise FileNotFoundError(f"File {file_name} not found")
+        raise FileNotFound(f"File {file_name} not found")
 
     # You can also validate secure_hash here if needed
     return file_path
-
         # ================= GET FILE PATH =================👆
 
     async def get_file_properties(self, id: int) -> FileId:
@@ -300,6 +299,7 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
 
 
