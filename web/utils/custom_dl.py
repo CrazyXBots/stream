@@ -16,7 +16,25 @@ from web.utils.safe_send import safe_send
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
 
 class ByteStreamer:
-    def __init__(self, client: Client):
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.file_size = os.path.getsize(file_path)
+
+    def stream(self, start=0, end=None, chunk_size=1024 * 1024):
+        if end is None or end >= self.file_size:
+            end = self.file_size - 1
+
+        with open(self.file_path, "rb") as f:
+            f.seek(start)
+            remaining = end - start + 1
+
+            while remaining > 0:
+                read_size = min(chunk_size, remaining)
+                data = f.read(read_size)
+                if not data:
+                    break
+                remaining -= len(data)
+                yield data
         """A custom class that holds the cache of a specific client and class functions.
         attributes:
             client: the client that the cache is for.
@@ -243,5 +261,6 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
 
