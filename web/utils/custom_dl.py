@@ -172,74 +172,69 @@ class ByteStreamer:
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
     
     async def yield_file(
-        self,
-        file_id: FileId,
-        index: int,
-        offset: int,
-        first_part_cut: int,
-        last_part_cut: int,
-        part_count: int,
-        chunk_size: int,
-    ) -> Union[str, None]:
-        """
-        Custom generator that yields the bytes of the media file.
-        Modded from <https://github.com/eyaadh/megadlbot_oss/blob/master/mega/telegram/utils/custom_download.py#L20>
-        Thanks to Eyaadh <https://github.com/eyaadh>
-        """
-        client = self.client
-        work_loads[index] += 1
-        logging.debug(f"Starting to yielding file with client {index}.")
-        media_session = await self.generate_media_session(client, file_id)
+    self,
+    file_id: FileId,
+    index: int,
+    offset: int,
+    first_part_cut: int,
+    last_part_cut: int,
+    part_count: int,
+    chunk_size: int,
+) -> Union[str, None]:
+    """
+    Custom generator that yields the bytes of the media file.
+    Modded from <https://github.com/eyaadh/megadlb>
+    Thanks to Eyaadh <https://github.com/eyaadh>
+    """
+    client = self.client
+    work_loads[index] += 1
+    logging.debug(f"Starting to yielding file with client {index}.")
+    media_session = await self.generate_media_session(client, file_id)
 
-        current_part = 1
-        location = await self.get_location(file_id)
+    current_part = 1
+    location = await self.get_location(file_id)
 
-        try:
-    r = await safe_send(media_session, ...)
-    r = await raw.functions.upload.GetFile(
-        location=location,
-        offset=offset,
-        limit=chunk_size
-    )
-
-    if isinstance(r, raw.types.upload.File):
-        while True:
-            chunk = r.bytes
-            if not chunk:
-                break
-            elif part_count == 1:
-                yield chunk[first_part_cut:last_part_cut]
-            elif current_part == 1:
-                yield chunk[first_part_cut:]
-            elif current_part == part_count:
-                yield chunk[:last_part_cut]
-            else:
-                yield chunk
-
-            current_part += 1
-            offset += chunk_size
-
-            if current_part > part_count:
-                break
-
-    r = await media_session.send(
-        raw.functions.upload.GetFile(
+    try:
+        r = await safe_send(media_session, ...)
+        r = await raw.functions.upload.GetFile(
             location=location,
             offset=offset,
             limit=chunk_size
         )
-    )
 
-except (TimeoutError, AttributeError):
-    pass
-finally:
-    logging.debug(f"Finished yielding file with {current_part} parts.")
-    work_loads[index] -= 1
-        except (TimeoutError, AttributeError):
-            pass
-        finally:
-            logging.debug("Finished yielding file with {current_part} parts.")
-            work_loads[index] -= 1
+        if isinstance(r, raw.types.upload.File):
+            while True:
+                chunk = r.bytes
+                if not chunk:
+                    break
+                elif part_count == 1:
+                    yield chunk[first_part_cut:last_part_cut]
+                elif current_part == 1:
+                    yield chunk[first_part_cut:]
+                elif current_part == part_count:
+                    yield chunk[:last_part_cut]
+                else:
+                    yield chunk
+
+                current_part += 1
+                offset += chunk_size
+
+                if current_part > part_count:
+                    break
+
+        r = await media_session.send(
+            raw.functions.upload.GetFile(
+                location=location,
+                offset=offset,
+                limit=chunk_size
+            )
+        )
+
+    except (TimeoutError, AttributeError):
+        pass
+    finally:
+        logging.debug(f"Finished yielding file with {current_part} parts.")
+        work_loads[index] -= 1
 
     
     async def clean_cache(self) -> None:
@@ -253,6 +248,7 @@ finally:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
 
 
