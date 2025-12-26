@@ -196,13 +196,13 @@ class ByteStreamer:
         location = await self.get_location(file_id)
 
         try:
-        r = await media_session.safe_send(
-            raw.functions.upload.GetFile(
-                location=location,
-                offset=offset,
-                limit=chunk_size,
-            ),
-        )
+    r = await media_session.safe_send(
+        raw.functions.upload.GetFile(
+            location=location,
+            offset=offset,
+            limit=chunk_size,
+        ),
+    )
 
         if isinstance(r, raw.types.upload.File):
             while True:
@@ -255,5 +255,6 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
 
