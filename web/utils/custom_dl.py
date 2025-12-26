@@ -194,7 +194,20 @@ class ByteStreamer:
         location = await self.get_location(file_id)
 
         try:
-            r = await media_session.send(
+# safer send with retries
+async def safe_send(session, *args, **kwargs):
+    import asyncio
+    from pyrogram.errors import RPCError
+
+    for attempt in range(3):
+        try:
+            return await session.send(*args, **kwargs)
+        except (OSError, ConnectionResetError, RPCError) as e:
+            print(f"[retry {attempt+1}/3] media_session.send failed: {e}")
+            await asyncio.sleep(2)  # short delay between tries
+    raise Exception("Failed to send after 3 attempts")
+
+r = await safe_send(media_session, ...)
                 raw.functions.upload.GetFile(
                     location=location, offset=offset, limit=chunk_size
                 ),
@@ -242,3 +255,4 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
