@@ -4,10 +4,9 @@ import time
 from typing import Dict, AsyncGenerator
 
 from pyrogram import Client, raw
-from pyrogram.raw.types import FileType, ThumbnailSource
 from pyrogram.file_id import FileId
 
-from web.utils.connection_manager import ConnectionManager  # <-- Added
+from web.utils.connection_manager import ConnectionManager
 from web.server.exceptions import FIleNotFound
 from web.utils.file_properties import get_file_ids
 from web.server import work_loads
@@ -36,8 +35,8 @@ class ByteStreamer:
         self.cached_file_ids: Dict[int, FileId] = {}
         self.last_used: Dict[int, float] = {}
 
-        # Create a ConnectionManager for safe calls
-        self.conn_mgr = ConnectionManager(client)  # <-- Added
+        # Create ConnectionManager for safe API calls
+        self.conn_mgr = ConnectionManager(client)
 
         asyncio.create_task(self._cache_cleaner())
         asyncio.create_task(self._session_cleanup())
@@ -70,33 +69,25 @@ class ByteStreamer:
 
     @staticmethod
     async def _get_location(file_id: FileId):
-        if file_id.file_type == FileType.CHAT_PHOTO:
-            peer = (
-                raw.types.InputPeerUser(
-                    user_id=file_id.chat_id,
-                    access_hash=file_id.chat_access_hash,
-                )
-                if file_id.chat_id > 0
-                else raw.types.InputPeerChannel(
-                    channel_id=utils.get_channel_id(file_id.chat_id),
-                    access_hash=file_id.chat_access_hash,
-                )
-            )
-            return raw.types.InputPeerPhotoFileLocation(
-                peer=peer,
-                volume_id=file_id.volume_id,
-                local_id=file_id.local_id,
-                big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG,
-            )
+        """
+        Build a raw InputFileLocation depending on the file type.
+        Pyrogram 2.x no longer exports FileType/ThumbnailSource in raw.types.
+        """
 
-        if file_id.file_type == FileType.PHOTO:
-            return raw.types.InputPhotoFileLocation(
-                id=file_id.media_id,
-                access_hash=file_id.access_hash,
-                file_reference=file_id.file_reference,
-                thumb_size=file_id.thumbnail_size,
-            )
+        # Photo location
+        try:
+            # If the file_id indicates type "photo"
+            if file_id.file_type == "photo":
+                return raw.types.InputPhotoFileLocation(
+                    id=file_id.media_id,
+                    access_hash=file_id.access_hash,
+                    file_reference=file_id.file_reference,
+                    thumb_size=file_id.thumbnail_size,
+                )
+        except Exception:
+            pass
 
+        # Otherwise treat as document/media
         return raw.types.InputDocumentFileLocation(
             id=file_id.media_id,
             access_hash=file_id.access_hash,
@@ -109,22 +100,21 @@ class ByteStreamer:
         location,
         offset: int,
         limit: int,
-        dc_id: int
+        dc_id: int,
     ):
         current_limit = limit
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 self.last_used[dc_id] = time.time()
-                # Use ConnectionManager to safely download
-                result = await self.conn_mgr.safe_download(location, offset=offset, limit=current_limit)
+                result = await self.conn_mgr.safe_download(
+                    location, offset=offset, limit=current_limit
+                )
                 return result
 
             except Exception as e:
-                # Backoff retry logic
                 backoff = BASE_BACKOFF**attempt
                 logger.warning(f"[fetch_chunk] retry {attempt}/{MAX_RETRIES} backoff={backoff}s: {e}")
                 await asyncio.sleep(backoff)
-
         return None
 
     async def yield_file(
@@ -140,6 +130,7 @@ class ByteStreamer:
 
         async with GLOBAL_STREAM_LIMIT:
             work_loads[index] += 1
+
             try:
                 location = await self._get_location(file_id)
             except Exception as e:
@@ -153,12 +144,7 @@ class ByteStreamer:
 
             while part <= part_count:
                 try:
-                    r = await self._fetch_chunk(
-                        location,
-                        current_offset,
-                        dynamic_chunk,
-                        file_id.dc_id,
-                    )
+                    r = await self._fetch_chunk(location, current_offset, dynamic_chunk, file_id.dc_id)
                 except Exception as e:
                     logger.error(f"[yield_file] chunk fetch error: {e}")
                     break
