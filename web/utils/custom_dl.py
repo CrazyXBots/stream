@@ -1,4 +1,4 @@
-import asyncio
+import asyncio 
 import logging
 import time
 from typing import Dict, AsyncGenerator
@@ -209,33 +209,47 @@ class ByteStreamer:
         last_part_cut: int,
         part_count: int,
         chunk_size: int,
-    ) -> AsyncGenerator[bytes, None]:
-
+    ):
         async with GLOBAL_STREAM_LIMIT:
             work_loads[index] += 1
-
             dc_id = file_id.dc_id
+
             try:
-                session = await self._create_media_session(file_id)
-                location = await self._get_location(file_id)
+                # Attempt to create session
+                try:
+                    session = await self.generate_media_session(file_id)
+                except Exception as e:
+                    logger.error(f"Failed to create media session: {e}")
+                    return  # stop generator safely
+
+                # Get file location for chunk fetching
+                try:
+                    location = await self.get_location(file_id)
+                except Exception as e:
+                    logger.error(f"Failed to get location: {e}")
+                    return
 
                 current_offset = offset
+                part = 1
                 dynamic_chunk = min(MAX_CHUNK, max(chunk_size, MIN_CHUNK))
 
-                part = 1
                 while part <= part_count:
-                    result = await self._fetch_chunk(
-                        session, location, current_offset, dynamic_chunk, dc_id
-                    )
-
-                    if not result or not isinstance(result, raw.types.upload.File):
+                    try:
+                        r = await self.safe_get_chunk(
+                            session, location, current_offset, dynamic_chunk, dc_id
+                        )
+                    except Exception as e:
+                        logger.error(f"Error fetching chunk: {e}")
                         return
 
-                    data = result.bytes
+                    if not r or not isinstance(r, raw.types.upload.File):
+                        return
+
+                    data = r.bytes
                     if not data:
                         return
 
-                    # slice for first/last parts
+                    # Yield correct slice of the chunk
                     if part_count == 1:
                         yield data[first_part_cut:last_part_cut]
                     elif part == 1:
@@ -250,4 +264,3 @@ class ByteStreamer:
 
             finally:
                 work_loads[index] -= 1
-
