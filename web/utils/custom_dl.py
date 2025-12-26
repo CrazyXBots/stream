@@ -10,6 +10,7 @@ from pyrogram.session import Session, Auth
 from pyrogram.errors import AuthBytesInvalid
 from web.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
+from web.utils.safe_send import safe_send
 
 #Dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
@@ -228,7 +229,7 @@ class ByteStreamer:
         location = await self.get_location(file_id)
 
         try:
-            r = await media_session.send(
+            r = await media_session.safe_send(
                 raw.functions.upload.GetFile(
                     location=location, offset=offset, limit=chunk_size
                 ),
@@ -253,7 +254,7 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    r = await media_session.send(
+                    r = await media_session.safe_send(
                         raw.functions.upload.GetFile(
                             location=location, offset=offset, limit=chunk_size
                         ),
@@ -276,4 +277,5 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
