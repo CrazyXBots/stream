@@ -11,7 +11,7 @@ from aiohttp.http_exceptions import BadStatusLine
 
 from info import *
 from web.server import multi_clients, work_loads
-from web.server.exceptions import FileNotFound, InvalidHash
+from web.server.exceptions import InvalidHash
 from web.utils.custom_dl import get_file_path
 from web.utils.render_template import render_page
 from utils import get_readable_time
@@ -124,9 +124,6 @@ async def stream_handler(request: web.Request):
 
     except InvalidHash as e:
         raise web.HTTPForbidden(text=e.message)
-
-    except FileNotFound as e:
-        raise web.HTTPNotFound(text=e.message)
 
     except (AttributeError, BadStatusLine, ConnectionResetError):
         pass
