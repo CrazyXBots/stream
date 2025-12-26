@@ -4,7 +4,6 @@ import logging
 from info import *
 from typing import Dict, Union
 from web.server import work_loads
-
 from pyrogram import Client, utils, raw
 from web.utils.file_properties import get_file_ids
 from pyrogram.session import Session, Auth
@@ -117,12 +116,14 @@ class ByteStreamer:
                         channel_id=utils.get_channel_id(file_id.chat_id),
                         access_hash=file_id.chat_access_hash,
                     )
+
             return raw.types.InputPeerPhotoFileLocation(
                 peer=peer,
                 volume_id=file_id.volume_id,
                 local_id=file_id.local_id,
                 big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG,
             )
+
         elif file_type == FileType.PHOTO:
             return raw.types.InputPhotoFileLocation(
                 id=file_id.media_id,
@@ -130,6 +131,7 @@ class ByteStreamer:
                 file_reference=file_id.file_reference,
                 thumb_size=file_id.thumbnail_size,
             )
+
         else:
             return raw.types.InputDocumentFileLocation(
                 id=file_id.media_id,
@@ -158,6 +160,8 @@ class ByteStreamer:
             current_part = 1
 
             while current_part <= part_count:
+                # --- Retry loop with backoff ---
+                r = None
                 for attempt in range(5):
                     try:
                         r = await media_session.send(
@@ -168,21 +172,29 @@ class ByteStreamer:
                             )
                         )
                         break
+
                     except FloodWait as e:
                         wait_time = getattr(e, "value", None) or getattr(e, "seconds", None)
                         logging.warning(f"FloodWait {wait_time}s, sleeping...")
                         await asyncio.sleep(wait_time)
+
                     except (OSError, ConnectionResetError, asyncio.TimeoutError) as exc:
-                        logging.warning(f"Connection retry {attempt+1}/5: {exc}")
-                        await asyncio.sleep(2 ** attempt)
-                else:
-                    logging.error("Failed to fetch chunk after retries")
+                        backoff = 2 ** attempt
+                        logging.warning(f"Connection retry {attempt+1}/5 (backoff {backoff}s): {exc}")
+                        await asyncio.sleep(backoff)
+                        continue
+
+                # If still None after retries
+                if r is None:
+                    logging.error(f"Failed to fetch chunk after retries (offset={offset})")
                     return
 
+                # Validate Telegram reply
                 if not isinstance(r, raw.types.upload.File):
                     logging.error("Unexpected Telegram reply")
                     return
 
+                # Process the chunk data
                 while True:
                     chunk = r.bytes
                     if not chunk:
@@ -213,6 +225,7 @@ class ByteStreamer:
 
         except Exception as e:
             logging.error(f"Error while streaming: {e}")
+
         finally:
             work_loads[index] -= 1
             logging.debug(f"Finished yielding file (client {index}).")
