@@ -1,132 +1,165 @@
 import asyncio
-import logging
+import os
+import random
 
-from pyrogram import Client, filters
-from pyrogram.errors import FloodWait, MessageIdInvalid, RPCError
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-
-from database.users_db import db
 from web.utils.file_properties import get_hash
-from utils import get_size
+from pyrogram import Client, filters
 from info import BIN_CHANNEL, BAN_CHNL, BANNED_CHANNELS, URL, BOT_USERNAME
-
-# ----------------------------
-# Logger setup
-# ----------------------------
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler()
-formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+from utils import get_size
+from Script import script
+from database.users_db import db
+from pyrogram.errors import FloodWait, RPCError, BadRequest
+from pyrogram.types import (
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
 )
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
 
 
+# ----------------------------
+# Safe forwarding (with FloodWait)
+# ----------------------------
+async def safe_forward_channel(bot: Client, message: Message, chat_id: int):
+    """
+    Forward safely with FloodWait handling.
+    """
+    while True:
+        try:
+            return await message.forward(chat_id=chat_id)
+
+        except FloodWait as e:
+            wait_time = getattr(e, "value", None) or getattr(e, "seconds", None) or 5
+            print(f"FloodWait for {wait_time}s in safe_forward_channel")
+            await asyncio.sleep(wait_time)
+
+        except RPCError as e:
+            print(f"RPC Error in forward: {e}")
+            return None
+
+        except Exception as e:
+            print(f"Unexpected error in forward: {e}")
+            return None
+
+
+# ----------------------------
+# Safe edit of buttons (with FloodWait)
+# ----------------------------
+async def safe_edit_buttons(
+    bot: Client, chat_id: int, message_id: int, markup: InlineKeyboardMarkup
+):
+    """
+    Safely update message buttons with FloodWait support.
+    """
+    while True:
+        try:
+            return await bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=markup,
+            )
+
+        except FloodWait as e:
+            wait_time = getattr(e, "value", None) or getattr(e, "seconds", None) or 5
+            print(f"FloodWait for {wait_time}s in safe_edit_buttons")
+            await asyncio.sleep(wait_time)
+
+        except BadRequest as e:
+            print(f"BadRequest while editing buttons: {e}")
+            return None
+
+        except Exception as e:
+            print(f"Unexpected error while editing buttons: {e}")
+            return None
+
+
+# ----------------------------
+# Channel receiver handler
+# ----------------------------
 @Client.on_message(
-    filters.channel
-    & (filters.document | filters.video)
-    & ~filters.forwarded,
+    filters.channel & (filters.document | filters.video) & ~filters.forwarded,
     group=-1,
 )
 async def channel_receive_handler(bot: Client, broadcast: Message):
 
-    chat_id = broadcast.chat.id
+    chat_id = int(broadcast.chat.id)
 
-    # ----------------------------
     # Skip banned channels
-    # ----------------------------
-    if chat_id in BAN_CHNL or chat_id in BANNED_CHANNELS:
-        logger.info(f"Channel {chat_id} is banned or blocked — skipping.")
-        try:
-            await bot.leave_chat(chat_id)
-        except Exception as leave_err:
-            logger.warning(f"Failed to leave banned channel {chat_id}: {leave_err}")
+    if chat_id in BAN_CHNL:
+        print("Channel in BAN_CHNL, no streaming link supplied.")
         return
 
     try:
-        # ----------------------------
+        is_banned = await db.is_banned(chat_id)
+    except Exception:
+        is_banned = False
+
+    if chat_id in BANNED_CHANNELS or is_banned:
+        try:
+            await bot.leave_chat(chat_id)
+        except Exception as e:
+            print(f"Failed to leave banned chat {chat_id}: {e}")
+        return
+
+    try:
         # Extract file info
-        # ----------------------------
-        file_obj = broadcast.document or broadcast.video
-        file_name = file_obj.file_name if file_obj else "Unknown File"
-        file_size = get_size(file_obj.file_size) if file_obj else "Unknown Size"
+        file = broadcast.document or broadcast.video
+        file_name = file.file_name if file else "Unknown File"
+        file_size = get_size(file.file_size) if file else "Unknown Size"
 
-        # ----------------------------
-        # Forward to BIN_CHANNEL
-        # ----------------------------
-        msg = await broadcast.forward(chat_id=BIN_CHANNEL)
+        # Forward to bin channel safely
+        msg = await safe_forward_channel(bot, broadcast, BIN_CHANNEL)
+        if not msg:
+            print("Failed to forward broadcast to BIN_CHANNEL.")
+            return
 
-        file_hash = get_hash(msg)
+        # Generate hash (safe)
+        try:
+            file_hash = get_hash(msg)
+        except Exception as e:
+            print(f"[stream2] get_hash error: {e}")
+            file_hash = ""
+
+        # Build stream/download links
         stream_link = f"{URL}watch/{msg.id}?hash={file_hash}"
         download_link = f"{URL}{msg.id}?hash={file_hash}"
 
-        # ----------------------------
-        # Notify BIN_CHANNEL
-        # ----------------------------
+        # Notify in bin channel
         await msg.reply_text(
             text=(
-                f"**Channel:** `{broadcast.chat.title}`\n"
+                f"**Channel Name:** `{broadcast.chat.title}`\n"
                 f"**CHANNEL ID:** `{broadcast.chat.id}`\n"
-                f"**File:** `{file_name}` ({file_size})\n\n"
-                f"🔗 **Stream Link:** {stream_link}"
+                f"**STREAM LINK:** {stream_link}"
             ),
             disable_web_page_preview=True,
             quote=True,
         )
 
-        # ----------------------------
         # Build buttons
-        # ----------------------------
         buttons = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton("📺 STREAM", url=stream_link),
                     InlineKeyboardButton("⬇️ DOWNLOAD", url=download_link),
-                ],
+                ]
             ]
         )
 
-        # ----------------------------
-        # Edit original message
-        # ----------------------------
-        try:
-            await bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=broadcast.id,
-                reply_markup=buttons,
-            )
+        # Update original message with buttons
+        await safe_edit_buttons(bot, chat_id, broadcast.id, buttons)
 
-        except MessageIdInvalid:
-            logger.warning(f"Cannot edit message {broadcast.id}, invalid ID.")
-
-        except FloodWait as fw:
-            wait_time = fw.value if hasattr(fw, "value") else fw.seconds
-            logger.warning(f"FloodWait while editing — sleeping {wait_time}s")
-            await asyncio.sleep(wait_time)
-
-        except RPCError as rpc_e:
-            logger.error(f"RPC error while editing message: {rpc_e}")
-
-    except FloodWait as fw:
-        wait = fw.value if hasattr(fw, "value") else fw.seconds
-        logger.warning(f"FloodWait huge — sleeping {wait}s before resume.")
-        await asyncio.sleep(wait)
-
-    except asyncio.TimeoutError:
-        logger.warning("Timeout in channel_receive_handler — sleeping 5s.")
+    except asyncio.exceptions.TimeoutError:
+        print("Request Timed Out! Waiting before retry.")
         await asyncio.sleep(5)
 
-    except Exception as e:
-        # General unexpected errors
-        logger.error(f"Unexpected error in channel_receive_handler: {e}")
-
-        # Try notifying BIN_CHANNEL
+    except Exception as exc:
+        # Log errors and send to BIN_CHANNEL for visibility
+        error_msg = f"❌ **Error in stream2 handler:** `{exc}`"
+        print(error_msg)
         try:
             await bot.send_message(
                 chat_id=BIN_CHANNEL,
-                text=f"❌ **Error in stream2 handler:** `{e}`",
+                text=error_msg,
                 disable_web_page_preview=True,
             )
-        except Exception as notify_err:
-            logger.error(f"Failed to send error to BIN_CHANNEL: {notify_err}")
+        except Exception:
+            pass
