@@ -195,6 +195,9 @@ class ByteStreamer:
 
         try:
             r = await safe_send(media_session, ...)
+
+r = await safe_send(media_session, ...)
+
                 raw.functions.upload.GetFile(
                     location=location, offset=offset, limit=chunk_size
                 ),
@@ -242,5 +245,6 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
 
