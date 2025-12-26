@@ -61,7 +61,41 @@ class ByteStreamer:
         return self.cached_file_ids[msg_id]
 
     async def _cache_cleaner(self):
-        while True:
+      async def generate_media_session(self, file_id: FileId) -> Session:
+        dc_id = file_id.dc_id
+
+        # Try to reuse session if exists
+        session = self.client.media_sessions.get(dc_id)
+        if session:
+            # Attempt a simple call to verify session is valid
+            try:
+                await session.send(raw.functions.help.GetConfig())
+                return session
+            except Exception:
+                await self.reset_media_session(dc_id)
+                session = None
+
+        async with self.get_dc_lock(dc_id):
+            try:
+                # Always create a fresh media session for target DC
+                session = Session(
+                    self.client,
+                    dc_id,
+                    await self.client.storage.auth_key(),
+                    await self.client.storage.test_mode(),
+                    is_media=True,
+                )
+                await session.start()
+
+                # Save for reuse
+                self.client.media_sessions[dc_id] = session
+                return session
+
+            except Exception as e:
+                logger.error(f"Media session create failed: {e}")
+                # ensure removal and stop
+                await self.reset_media_session(dc_id)
+                raise  while True:
             await asyncio.sleep(1800)
             self.cached_file_ids.clear()
 
@@ -81,71 +115,7 @@ class ByteStreamer:
             except Exception as e:
                 logger.debug(f"Session reset error: {e}")
 
-    async def _create_media_session(self, file_id: FileId) -> Session:
-        dc_id = file_id.dc_id
-        session = self.client.media_sessions.get(dc_id)
-
-        # recreate session if closed
-        if session and not session.is_connected:
-            await self._reset_media_session(dc_id)
-            session = None
-
-        if session:
-            return session
-
-        async with self._dc_lock(dc_id):
-            try:
-                # generate new session
-                if dc_id != await self.client.storage.dc_id():
-                    auth = await Auth(
-                        self.client, dc_id, await self.client.storage.test_mode()
-                    ).create()
-                    session = Session(
-                        self.client,
-                        dc_id,
-                        auth,
-                        await self.client.storage.test_mode(),
-                        is_media=True,
-                    )
-                else:
-                    session = Session(
-                        self.client,
-                        dc_id,
-                        await self.client.storage.auth_key(),
-                        await self.client.storage.test_mode(),
-                        is_media=True,
-                    )
-
-                await session.start()
-
-                # import authorization
-                exported = await self.client.invoke(
-                    raw.functions.auth.ExportAuthorization(dc_id=dc_id)
-                )
-                try:
-                    await session.send(
-                        raw.functions.auth.ImportAuthorization(
-                            id=exported.id, bytes=exported.bytes
-                        )
-                    )
-                except AuthBytesInvalid:
-                    # retry just once
-                    try:
-                        await session.send(
-                            raw.functions.auth.ImportAuthorization(
-                                id=exported.id, bytes=exported.bytes
-                            )
-                        )
-                    except AuthBytesInvalid:
-                        logger.warning("Auth import failed twice")
-
-                self.client.media_sessions[dc_id] = session
-                return session
-
-            except Exception as e:
-                logger.error(f"Media session create failed: {e}")
-                await self._reset_media_session(dc_id)
-                raise
+    
 
     async def _session_cleanup(self):
         while True:
@@ -280,3 +250,4 @@ class ByteStreamer:
 
             finally:
                 work_loads[index] -= 1
+
