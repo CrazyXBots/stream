@@ -4,12 +4,14 @@ import logging
 from info import *
 from typing import Dict, Union
 from web.server import work_loads
+
 from pyrogram import Client, utils, raw
 from web.utils.file_properties import get_file_ids
 from pyrogram.session import Session, Auth
 from pyrogram.errors import AuthBytesInvalid, FloodWait, RPCError
 from web.server.exceptions import FIleNotFound
 from pyrogram.file_id import FileId, FileType, ThumbnailSource
+
 import os
 from web.utils.safe_send import send
 
@@ -34,13 +36,15 @@ class ByteStreamer:
         return self.cached_file_ids[id]
 
     async def generate_file_properties(self, id: int) -> FileId:
+        """
+        Generates the properties of a media file on a specific message. returns the properties in a FileId.
+        """
         file_id = await get_file_ids(self.client, BIN_CHANNEL, id)
-        logging.debug(f"Generated file ID and Unique ID for message with ID {id}")
+        logging.debug(f"Generated file ID for message with ID {id}")
         if not file_id:
             logging.debug(f"Message with ID {id} not found")
             raise FIleNotFound
         self.cached_file_ids[id] = file_id
-        logging.debug(f"Cached media message with ID {id}")
         return file_id
 
     async def generate_media_session(self, client: Client, file_id: FileId) -> Session:
@@ -50,7 +54,6 @@ class ByteStreamer:
         media_session = client.media_sessions.get(file_id.dc_id, None)
 
         if media_session is None:
-            # Trying direct or exported auth if different DC
             try:
                 if file_id.dc_id != await client.storage.dc_id():
                     media_session = Session(
@@ -84,7 +87,6 @@ class ByteStreamer:
                     else:
                         await media_session.stop()
                         raise AuthBytesInvalid
-
                 else:
                     media_session = Session(
                         client,
@@ -95,15 +97,12 @@ class ByteStreamer:
                     )
                     await media_session.start()
 
-                logging.debug(f"Created media session for DC {file_id.dc_id}")
                 client.media_sessions[file_id.dc_id] = media_session
+                logging.debug(f"Created media session for DC {file_id.dc_id}")
 
             except Exception as e:
                 logging.error(f"Media session creation failed: {e}")
                 raise
-
-        else:
-            logging.debug(f"Using cached media session for DC {file_id.dc_id}")
 
         return media_session
 
@@ -113,6 +112,9 @@ class ByteStreamer:
         raw.types.InputDocumentFileLocation,
         raw.types.InputPeerPhotoFileLocation,
     ]:
+        """
+        Returns the file location for the media file.
+        """
         file_type = file_id.file_type
 
         if file_type == FileType.CHAT_PHOTO:
@@ -129,29 +131,26 @@ class ByteStreamer:
                         channel_id=utils.get_channel_id(file_id.chat_id),
                         access_hash=file_id.chat_access_hash,
                     )
-            location = raw.types.InputPeerPhotoFileLocation(
+            return raw.types.InputPeerPhotoFileLocation(
                 peer=peer,
                 volume_id=file_id.volume_id,
                 local_id=file_id.local_id,
                 big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG,
             )
-
         elif file_type == FileType.PHOTO:
-            location = raw.types.InputPhotoFileLocation(
+            return raw.types.InputPhotoFileLocation(
                 id=file_id.media_id,
                 access_hash=file_id.access_hash,
                 file_reference=file_id.file_reference,
                 thumb_size=file_id.thumbnail_size,
             )
         else:
-            location = raw.types.InputDocumentFileLocation(
+            return raw.types.InputDocumentFileLocation(
                 id=file_id.media_id,
                 access_hash=file_id.access_hash,
                 file_reference=file_id.file_reference,
                 thumb_size=file_id.thumbnail_size,
             )
-
-        return location
 
     async def yield_file(
         self,
@@ -164,7 +163,7 @@ class ByteStreamer:
         chunk_size: int,
     ) -> Union[bytes, None]:
         """
-        Custom generator that yields the bytes of the media file with safe retries
+        Custom generator that yields the bytes of the media file with safe retries.
         """
         client = self.client
         work_loads[index] += 1
@@ -173,12 +172,11 @@ class ByteStreamer:
         try:
             media_session = await self.generate_media_session(client, file_id)
             location = await self.get_location(file_id)
-
             current_part = 1
 
             while current_part <= part_count:
-                # Retry logic for Telegram connection errors
-                for attempt in range(6):
+                # Try up to 5 retries on errors
+                for attempt in range(5):
                     try:
                         r = await media_session.send(
                             raw.functions.upload.GetFile(
@@ -188,18 +186,23 @@ class ByteStreamer:
                             )
                         )
                         break
-                    except (OSError, ConnectionResetError) as e:
-                        logging.warning(f"Connection lost, retry {attempt+1}/6...")
-                        await asyncio.sleep(2 ** attempt)
                     except FloodWait as e:
-                        logging.warning(f"Flood wait {e.x}s")
-                        await asyncio.sleep(e.x)
+                        # Wait the required seconds (value/seconds)
+                        wait_time = getattr(e, "value", None) or getattr(e, "seconds", None)
+                        if wait_time:
+                            logging.warning(f"FloodWait {wait_time}s, sleeping...")
+                            await asyncio.sleep(wait_time)
+                        else:
+                            await asyncio.sleep(3)
+                    except (OSError, ConnectionResetError, asyncio.TimeoutError) as exc:
+                        logging.warning(f"Connection retry {attempt+1}/5: {exc}")
+                        await asyncio.sleep(2 ** attempt)
                 else:
-                    logging.error("Failed to send after retries")
+                    logging.error("Failed to fetch chunk after retries")
                     return
 
                 if not isinstance(r, raw.types.upload.File):
-                    logging.error("Unexpected type returned from Telegram")
+                    logging.error("Unexpected response type from Telegram")
                     return
 
                 while True:
@@ -207,7 +210,7 @@ class ByteStreamer:
                     if not chunk:
                         break
 
-                    # yield correct part
+                    # yield according to part
                     if part_count == 1:
                         yield chunk[first_part_cut:last_part_cut]
                     elif current_part == 1:
@@ -223,7 +226,7 @@ class ByteStreamer:
                     if current_part > part_count:
                         break
 
-                    # fetch next chunk
+                    # get the next chunk
                     r = await media_session.send(
                         raw.functions.upload.GetFile(
                             location=location,
@@ -234,14 +237,13 @@ class ByteStreamer:
 
         except Exception as e:
             logging.error(f"Error while streaming: {e}")
-
         finally:
             work_loads[index] -= 1
             logging.debug(f"Finished yielding file (client {index}).")
 
     async def clean_cache(self) -> None:
         """
-        function to clean the cache to reduce memory usage
+        Clean the cache to reduce memory usage.
         """
         while True:
             await asyncio.sleep(self.clean_timer)
