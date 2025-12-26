@@ -2,7 +2,6 @@ pyrotgfork
 PyTgCrypto
 pyrofork==2.3.48
 tgcrypto
-aiohttp
 python-dotenv<=0.20.0
 motor
 aiofiles
@@ -12,7 +11,7 @@ requests
 psutil
 jinja2
 pytz
-
+aiohttp<4
 pyromod
 Flask==2.2.2
 gunicorn==20.1.0
