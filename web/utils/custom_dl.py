@@ -72,6 +72,24 @@ class ByteStreamer:
         self.cached_file_ids: Dict[int, FileId] = {}
         asyncio.create_task(self.clean_cache())
 
+    # ================= GET FILE PATH =================
+
+    async def get_file_path(file_id: int, secure_hash: str) -> str:
+        """
+        Returns the full path of the file to stream.
+        Replace the logic here with your actual storage path.
+        """
+        # Example: your files are stored in 'downloads/' folder
+        file_name = f"{file_id}.mp4"
+        file_path = os.path.join("downloads", file_name)
+
+         if not os.path.exists(file_path):
+        # If file does not exist, raise exception
+            raise FileNotFoundError(f"File {file_name} not found")
+
+    # You can also validate secure_hash here if needed
+        return file_path
+
     async def get_file_properties(self, id: int) -> FileId:
         """
         Returns the properties of a media of a specific message in a FIleId class.
@@ -279,6 +297,7 @@ class ByteStreamer:
             
 #dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
+
 
 
 
