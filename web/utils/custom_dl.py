@@ -1,137 +1,255 @@
 import asyncio
 import logging
-from typing import AsyncGenerator
+import time
+from typing import Dict
 
-from pyrogram.raw.functions.upload import GetFile
-from pyrogram.raw.types import InputFileLocation
+from pyrogram import Client, raw, utils
+from pyrogram.errors import FloodWait, AuthBytesInvalid
+from pyrogram.file_id import FileId, FileType, ThumbnailSource
+from pyrogram.session import Session, Auth
 
-log = logging.getLogger(__name__)
+from info import BIN_CHANNEL
+from web.server import work_loads
+from web.server.exceptions import FIleNotFound
+from web.utils.file_properties import get_file_ids
 
 # ================= CONFIG ================= #
 
-DEFAULT_CHUNK_SIZE = 512 * 1024  # 512 KB
-MIN_CHUNK_SIZE = 32 * 1024       # 32 KB
 MAX_RETRIES = 5
-BASE_BACKOFF = 1.5
-
-# Global limiter (FIX 9)
+BASE_BACKOFF = 2
+MAX_STREAMS_PER_DC = 2
 GLOBAL_STREAM_LIMIT = asyncio.Semaphore(10)
+
+SESSION_IDLE_TIMEOUT = 300
+MIN_CHUNK = 32 * 1024
+MAX_CHUNK = 512 * 1024
 
 # ========================================= #
 
-
-class CustomDownloader:
-    def __init__(self, client):
+class ByteStreamer:
+    def __init__(self, client: Client):
         self.client = client
+        self.cached_file_ids: Dict[int, FileId] = {}
+        self.dc_locks: Dict[int, asyncio.Semaphore] = {}
+        self.last_used: Dict[int, float] = {}
 
-    # ------------------------------------------------ #
-    # FIX 3: NEVER reuse a broken session
-    # ------------------------------------------------ #
+        asyncio.create_task(self.clean_cache())
+        asyncio.create_task(self.cleanup_idle_sessions())
+
+    # ---------------- FILE ID CACHE ---------------- #
+
+    async def get_file_properties(self, msg_id: int) -> FileId:
+        if msg_id not in self.cached_file_ids:
+            file_id = await get_file_ids(self.client, BIN_CHANNEL, msg_id)
+            if not file_id:
+                raise FIleNotFound
+            self.cached_file_ids[msg_id] = file_id
+        return self.cached_file_ids[msg_id]
+
+    async def clean_cache(self):
+        while True:
+            await asyncio.sleep(1800)
+            self.cached_file_ids.clear()
+
+    # ---------------- SESSION MANAGEMENT ---------------- #
+
+    def get_dc_lock(self, dc_id: int):
+        if dc_id not in self.dc_locks:
+            self.dc_locks[dc_id] = asyncio.Semaphore(MAX_STREAMS_PER_DC)
+        return self.dc_locks[dc_id]
+
     async def reset_media_session(self, dc_id: int):
-        try:
-            session = self.client.media_sessions.pop(dc_id, None)
-            if session:
-                await session.close()
-        except Exception:
-            pass
+        session = self.client.media_sessions.pop(dc_id, None)
+        if session:
+            try:
+                await session.stop()
+            except Exception:
+                pass
 
-    async def generate_media_session(self, dc_id: int):
-        """
-        Pyrogram-safe:
-        - DO NOT check session.is_connected (does NOT exist)
-        - Session health is detected only on send failure
-        """
+    async def generate_media_session(self, file_id: FileId) -> Session:
+        dc_id = file_id.dc_id
         session = self.client.media_sessions.get(dc_id)
+
+        if session and not session.is_connected:
+            await self.reset_media_session(dc_id)
+            session = None
+
         if session:
             return session
 
-        session = await self.client.session.start_media_session(dc_id)
-        self.client.media_sessions[dc_id] = session
-        return session
+        async with self.get_dc_lock(dc_id):
+            try:
+                if dc_id != await self.client.storage.dc_id():
+                    auth = await Auth(
+                        self.client,
+                        dc_id,
+                        await self.client.storage.test_mode()
+                    ).create()
 
-    # ------------------------------------------------ #
-    # FIX 2 / 4 / 5 / 8: SAFE chunk fetch with retries
-    # ------------------------------------------------ #
-    async def safe_get_chunk(
-        self,
-        session,
-        location: InputFileLocation,
-        offset: int,
-        limit: int,
-        dc_id: int
-    ) -> bytes:
+                    session = Session(
+                        self.client,
+                        dc_id,
+                        auth,
+                        await self.client.storage.test_mode(),
+                        is_media=True
+                    )
+                    await session.start()
+
+                    for _ in range(5):
+                        exported = await self.client.invoke(
+                            raw.functions.auth.ExportAuthorization(dc_id=dc_id)
+                        )
+                        try:
+                            await session.send(
+                                raw.functions.auth.ImportAuthorization(
+                                    id=exported.id,
+                                    bytes=exported.bytes
+                                )
+                            )
+                            break
+                        except AuthBytesInvalid:
+                            continue
+                else:
+                    session = Session(
+                        self.client,
+                        dc_id,
+                        await self.client.storage.auth_key(),
+                        await self.client.storage.test_mode(),
+                        is_media=True
+                    )
+                    await session.start()
+
+                self.client.media_sessions[dc_id] = session
+                return session
+
+            except Exception:
+                await self.reset_media_session(dc_id)
+                raise
+
+    async def cleanup_idle_sessions(self):
+        while True:
+            await asyncio.sleep(60)
+            now = time.time()
+            for dc_id, last in list(self.last_used.items()):
+                if now - last > SESSION_IDLE_TIMEOUT:
+                    await self.reset_media_session(dc_id)
+                    self.last_used.pop(dc_id, None)
+
+    # ---------------- FILE LOCATION ---------------- #
+
+    @staticmethod
+    async def get_location(file_id: FileId):
+        if file_id.file_type == FileType.CHAT_PHOTO:
+            peer = (
+                raw.types.InputPeerUser(
+                    user_id=file_id.chat_id,
+                    access_hash=file_id.chat_access_hash
+                )
+                if file_id.chat_id > 0
+                else raw.types.InputPeerChannel(
+                    channel_id=utils.get_channel_id(file_id.chat_id),
+                    access_hash=file_id.chat_access_hash
+                )
+            )
+            return raw.types.InputPeerPhotoFileLocation(
+                peer=peer,
+                volume_id=file_id.volume_id,
+                local_id=file_id.local_id,
+                big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG
+            )
+
+        if file_id.file_type == FileType.PHOTO:
+            return raw.types.InputPhotoFileLocation(
+                id=file_id.media_id,
+                access_hash=file_id.access_hash,
+                file_reference=file_id.file_reference,
+                thumb_size=file_id.thumbnail_size
+            )
+
+        return raw.types.InputDocumentFileLocation(
+            id=file_id.media_id,
+            access_hash=file_id.access_hash,
+            file_reference=file_id.file_reference,
+            thumb_size=file_id.thumbnail_size
+        )
+
+    # ---------------- SAFE CHUNK FETCH ---------------- #
+
+    async def safe_get_chunk(self, session, location, offset, limit, dc_id):
         dynamic_limit = limit
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                result = await session.send(
-                    GetFile(
+                self.last_used[dc_id] = time.time()
+                return await session.send(
+                    raw.functions.upload.GetFile(
                         location=location,
                         offset=offset,
                         limit=dynamic_limit
                     )
                 )
-                return bytes(result.bytes)
 
-            except (OSError, ConnectionResetError, asyncio.TimeoutError) as e:
-                log.warning(f"Connection retry {attempt}/{MAX_RETRIES}: {e}")
+            except FloodWait as e:
+                await asyncio.sleep(e.value or e.seconds or 5)
 
-                # FIX 8: Adaptive chunk size
-                dynamic_limit = max(MIN_CHUNK_SIZE, dynamic_limit // 2)
-
-                # FIX 3: Reset broken session
-                await self.reset_media_session(dc_id)
-                session = await self.generate_media_session(dc_id)
-
+            except (OSError, ConnectionResetError, asyncio.TimeoutError):
+                dynamic_limit = max(MIN_CHUNK, dynamic_limit // 2)
                 await asyncio.sleep(BASE_BACKOFF ** attempt)
 
-        raise RuntimeError("Failed to fetch chunk after retries")
+        await self.reset_media_session(dc_id)
+        return None
 
-    # ------------------------------------------------ #
-    # FIX 1 → 13: FINAL STREAM GENERATOR
-    # ------------------------------------------------ #
+    # ---------------- STREAMING ---------------- #
+
     async def yield_file(
         self,
-        file_id,
-        file_size: int,
-        offset: int = 0
-    ) -> AsyncGenerator[bytes, None]:
-
-        async with GLOBAL_STREAM_LIMIT:  # FIX 9
-
-            location = file_id.location
+        file_id: FileId,
+        index: int,
+        offset: int,
+        first_part_cut: int,
+        last_part_cut: int,
+        part_count: int,
+        chunk_size: int
+    ):
+        async with GLOBAL_STREAM_LIMIT:
+            work_loads[index] += 1
             dc_id = file_id.dc_id
 
-            chunk_size = DEFAULT_CHUNK_SIZE
-            current_offset = offset  # FIX 7
+            try:
+                session = await self.generate_media_session(file_id)
+                location = await self.get_location(file_id)
 
-            session = await self.generate_media_session(dc_id)
+                current_offset = offset
+                part = 1
+                dynamic_chunk = min(MAX_CHUNK, max(chunk_size, MIN_CHUNK))
 
-            while current_offset < file_size:
-                try:
-                    data = await self.safe_get_chunk(
-                        session=session,
-                        location=location,
-                        offset=current_offset,
-                        limit=chunk_size,
-                        dc_id=dc_id
+                while part <= part_count:
+                    r = await self.safe_get_chunk(
+                        session,
+                        location,
+                        current_offset,
+                        dynamic_chunk,
+                        dc_id
                     )
 
-                except Exception as e:
-                    log.error(f"Chunk fetch failed at offset {current_offset}: {e}")
-                    break
+                    if not r or not isinstance(r, raw.types.upload.File):
+                        return
 
-                if not data:
-                    break
+                    data = r.bytes
+                    if not data:
+                        return
 
-                # FIX 7: Resume EXACT byte
-                current_offset += len(data)
+                    if part_count == 1:
+                        yield data[first_part_cut:last_part_cut]
+                    elif part == 1:
+                        yield data[first_part_cut:]
+                    elif part == part_count:
+                        yield data[:last_part_cut]
+                    else:
+                        yield data
 
-                yield data
+                    current_offset += len(data)
+                    part += 1
 
-    # ------------------------------------------------ #
-    # Optional helper (used by stream.py)
-    # ------------------------------------------------ #
-    async def stream_file(self, file_id, file_size, offset=0):
-        async for chunk in self.yield_file(file_id, file_size, offset):
-            yield chunk
+            finally:
+                work_loads[index] -= 1
