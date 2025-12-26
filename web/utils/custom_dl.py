@@ -1,151 +1,253 @@
+import math
 import asyncio
 import logging
-from pyrogram import Client
-from pyrogram.raw import functions
-from pyrogram.raw.types import InputFileLocation
-from aiohttp import web
+from info import *
+from typing import Dict, Union
+from web.server import work_loads
+from pyrogram import Client, utils, raw
+from web.utils.file_properties import get_file_ids
+from pyrogram.session import Session, Auth
+from pyrogram.errors import AuthBytesInvalid, FloodWait, RPCError
+from web.server.exceptions import FIleNotFound
+from pyrogram.file_id import FileId, FileType, ThumbnailSource
+import os
+from web.utils.safe_send import send
 
-logger = logging.getLogger("custom_dl")
+# Dont Remove My Credit
+# @MSLANDERS
+# For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
 
-GLOBAL_STREAM_LIMIT = asyncio.Semaphore(4)  # Example, adjust as needed
-work_loads = {}
-
-MIN_CHUNK = 512 * 1024
-MAX_CHUNK = 5 * 1024 * 1024
-
-class CustomDownloader:
+class ByteStreamer:
     def __init__(self, client: Client):
-        self.client = client
-        self.client.media_sessions = {}  # store sessions by dc_id
-        self.dc_locks = {}
+        """
+        A custom class that holds the cache of a specific client and class functions.
+        """
+        self.clean_timer = 30 * 60
+        self.client: Client = client
+        self.cached_file_ids: Dict[int, FileId] = {}
+        asyncio.create_task(self.clean_cache())
 
-    def get_dc_lock(self, dc_id):
-        if dc_id not in self.dc_locks:
-            self.dc_locks[dc_id] = asyncio.Lock()
-        return self.dc_locks[dc_id]
+    async def get_file_properties(self, id: int) -> FileId:
+        if id not in self.cached_file_ids:
+            await self.generate_file_properties(id)
+            logging.debug(f"Cached file properties for message with ID {id}")
+        return self.cached_file_ids[id]
 
-    async def reset_media_session(self, dc_id):
-        session = self.client.media_sessions.get(dc_id)
-        if session:
+    async def generate_file_properties(self, id: int) -> FileId:
+        file_id = await get_file_ids(self.client, BIN_CHANNEL, id)
+        logging.debug(f"Generated file ID and Unique ID for message with ID {id}")
+        if not file_id:
+            logging.debug(f"Message with ID {id} not found")
+            raise FIleNotFound
+        self.cached_file_ids[id] = file_id
+        logging.debug(f"Cached media message with ID {id}")
+        return file_id
+
+    async def generate_media_session(self, client: Client, file_id: FileId) -> Session:
+        """
+        Generates the media session for the DC that contains the media file.
+        """
+        media_session = client.media_sessions.get(file_id.dc_id, None)
+
+        if media_session is None:
+            # Trying direct or exported auth if different DC
             try:
-                await session.stop()
-            except Exception:
-                pass
-        self.client.media_sessions.pop(dc_id, None)
+                if file_id.dc_id != await client.storage.dc_id():
+                    media_session = Session(
+                        client,
+                        file_id.dc_id,
+                        await Auth(
+                            client,
+                            file_id.dc_id,
+                            await client.storage.test_mode()
+                        ).create(),
+                        await client.storage.test_mode(),
+                        is_media=True,
+                    )
+                    await media_session.start()
 
-    async def generate_media_session(self, file_id):
-        """Create or reuse a media session for the file's DC."""
-        dc_id = file_id.dc_id
+                    for _ in range(6):
+                        exported_auth = await client.invoke(
+                            raw.functions.auth.ExportAuthorization(dc_id=file_id.dc_id)
+                        )
+                        try:
+                            await media_session.send(
+                                raw.functions.auth.ImportAuthorization(
+                                    id=exported_auth.id,
+                                    bytes=exported_auth.bytes,
+                                )
+                            )
+                            break
+                        except AuthBytesInvalid:
+                            logging.debug(f"Invalid authorization bytes for DC {file_id.dc_id}")
+                            continue
+                    else:
+                        await media_session.stop()
+                        raise AuthBytesInvalid
 
-        # Try to reuse session if exists
-        session = self.client.media_sessions.get(dc_id)
-        if session:
-            try:
-                # Test if session works
-                await session.send(functions.help.GetConfig())
-                return session
-            except Exception:
-                await self.reset_media_session(dc_id)
-                session = None
+                else:
+                    media_session = Session(
+                        client,
+                        file_id.dc_id,
+                        await client.storage.auth_key(),
+                        await client.storage.test_mode(),
+                        is_media=True,
+                    )
+                    await media_session.start()
 
-        # Ensure only one session is created per DC
-        async with self.get_dc_lock(dc_id):
-            try:
-                session = self.client.session  # Use main client session
-                # Optional: create separate media session per DC if needed
-                self.client.media_sessions[dc_id] = session
-                return session
+                logging.debug(f"Created media session for DC {file_id.dc_id}")
+                client.media_sessions[file_id.dc_id] = media_session
+
             except Exception as e:
-                logger.error(f"Media session create failed: {e}")
-                await self.reset_media_session(dc_id)
+                logging.error(f"Media session creation failed: {e}")
                 raise
 
-    async def get_location(self, file_id):
-        """Return InputFileLocation for Pyrogram raw API"""
-        # Example, adjust based on your actual file structure
-        return InputFileLocation(
-            volume_id=file_id.volume_id,
-            local_id=file_id.local_id,
-            secret=file_id.secret
-        )
+        else:
+            logging.debug(f"Using cached media session for DC {file_id.dc_id}")
 
-    async def safe_get_chunk(self, session, location, offset, chunk_size, dc_id):
-        """Fetch chunk safely"""
-        try:
-            result = await session.send(
-                functions.upload.GetFile(
-                    location=location,
-                    offset=offset,
-                    limit=chunk_size
+        return media_session
+
+    @staticmethod
+    async def get_location(file_id: FileId) -> Union[
+        raw.types.InputPhotoFileLocation,
+        raw.types.InputDocumentFileLocation,
+        raw.types.InputPeerPhotoFileLocation,
+    ]:
+        file_type = file_id.file_type
+
+        if file_type == FileType.CHAT_PHOTO:
+            if file_id.chat_id > 0:
+                peer = raw.types.InputPeerUser(
+                    user_id=file_id.chat_id,
+                    access_hash=file_id.chat_access_hash
                 )
+            else:
+                if file_id.chat_access_hash == 0:
+                    peer = raw.types.InputPeerChat(chat_id=-file_id.chat_id)
+                else:
+                    peer = raw.types.InputPeerChannel(
+                        channel_id=utils.get_channel_id(file_id.chat_id),
+                        access_hash=file_id.chat_access_hash,
+                    )
+            location = raw.types.InputPeerPhotoFileLocation(
+                peer=peer,
+                volume_id=file_id.volume_id,
+                local_id=file_id.local_id,
+                big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG,
             )
-            return result
-        except Exception as e:
-            logger.error(f"Chunk fetch error: {e}")
-            return None
+
+        elif file_type == FileType.PHOTO:
+            location = raw.types.InputPhotoFileLocation(
+                id=file_id.media_id,
+                access_hash=file_id.access_hash,
+                file_reference=file_id.file_reference,
+                thumb_size=file_id.thumbnail_size,
+            )
+        else:
+            location = raw.types.InputDocumentFileLocation(
+                id=file_id.media_id,
+                access_hash=file_id.access_hash,
+                file_reference=file_id.file_reference,
+                thumb_size=file_id.thumbnail_size,
+            )
+
+        return location
 
     async def yield_file(
         self,
-        file_id,
-        index,
-        offset,
-        first_part_cut,
-        last_part_cut,
-        part_count,
-        chunk_size,
-    ):
-        """Generator that yields file chunks safely"""
-        async with GLOBAL_STREAM_LIMIT:
-            work_loads[index] = work_loads.get(index, 0) + 1
-            dc_id = file_id.dc_id
+        file_id: FileId,
+        index: int,
+        offset: int,
+        first_part_cut: int,
+        last_part_cut: int,
+        part_count: int,
+        chunk_size: int,
+    ) -> Union[bytes, None]:
+        """
+        Custom generator that yields the bytes of the media file with safe retries
+        """
+        client = self.client
+        work_loads[index] += 1
+        logging.debug(f"Starting to stream file with client {index}.")
 
-            try:
-                # Attempt to create session
-                try:
-                    session = await self.generate_media_session(file_id)
-                except Exception as e:
-                    logger.error(f"Failed to create media session: {e}")
-                    return  # stop generator safely
+        try:
+            media_session = await self.generate_media_session(client, file_id)
+            location = await self.get_location(file_id)
 
-                # Get file location for chunk fetching
-                try:
-                    location = await self.get_location(file_id)
-                except Exception as e:
-                    logger.error(f"Failed to get location: {e}")
+            current_part = 1
+
+            while current_part <= part_count:
+                # Retry logic for Telegram connection errors
+                for attempt in range(6):
+                    try:
+                        r = await media_session.send(
+                            raw.functions.upload.GetFile(
+                                location=location,
+                                offset=offset,
+                                limit=chunk_size
+                            )
+                        )
+                        break
+                    except (OSError, ConnectionResetError) as e:
+                        logging.warning(f"Connection lost, retry {attempt+1}/6...")
+                        await asyncio.sleep(2 ** attempt)
+                    except FloodWait as e:
+                        logging.warning(f"Flood wait {e.x}s")
+                        await asyncio.sleep(e.x)
+                else:
+                    logging.error("Failed to send after retries")
                     return
 
-                current_offset = offset
-                part = 1
-                dynamic_chunk = min(MAX_CHUNK, max(chunk_size, MIN_CHUNK))
+                if not isinstance(r, raw.types.upload.File):
+                    logging.error("Unexpected type returned from Telegram")
+                    return
 
-                while part <= part_count:
-                    try:
-                        r = await self.safe_get_chunk(
-                            session, location, current_offset, dynamic_chunk, dc_id
-                        )
-                    except Exception as e:
-                        logger.error(f"Error fetching chunk: {e}")
-                        return
+                while True:
+                    chunk = r.bytes
+                    if not chunk:
+                        break
 
-                    if not r or not hasattr(r, "bytes"):
-                        return
-
-                    data = r.bytes
-                    if not data:
-                        return
-
-                    # Yield correct slice of the chunk
+                    # yield correct part
                     if part_count == 1:
-                        yield data[first_part_cut:last_part_cut]
-                    elif part == 1:
-                        yield data[first_part_cut:]
-                    elif part == part_count:
-                        yield data[:last_part_cut]
+                        yield chunk[first_part_cut:last_part_cut]
+                    elif current_part == 1:
+                        yield chunk[first_part_cut:]
+                    elif current_part == part_count:
+                        yield chunk[:last_part_cut]
                     else:
-                        yield data
+                        yield chunk
 
-                    current_offset += len(data)
-                    part += 1
+                    current_part += 1
+                    offset += chunk_size
 
-            finally:
-                work_loads[index] -= 1
+                    if current_part > part_count:
+                        break
+
+                    # fetch next chunk
+                    r = await media_session.send(
+                        raw.functions.upload.GetFile(
+                            location=location,
+                            offset=offset,
+                            limit=chunk_size
+                        )
+                    )
+
+        except Exception as e:
+            logging.error(f"Error while streaming: {e}")
+
+        finally:
+            work_loads[index] -= 1
+            logging.debug(f"Finished yielding file (client {index}).")
+
+    async def clean_cache(self) -> None:
+        """
+        function to clean the cache to reduce memory usage
+        """
+        while True:
+            await asyncio.sleep(self.clean_timer)
+            self.cached_file_ids.clear()
+            logging.debug("Cleaned the cache")
+
+# Dont Remove My Credit
+# @MSLANDERS
+# For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
