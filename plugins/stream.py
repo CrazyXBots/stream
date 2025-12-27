@@ -11,7 +11,7 @@ from pyrogram.errors import FloodWait
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from plugins.mslandersbot import is_user_joined, is_user_allowed
 from safe_stream import download
-from utils.safe_sender import send
+from web.utils.safe_sender import send
 
 #Dont Remove My Credit @MSLANDERS 
 # For Any Kind Of Error Ask Us In Support Group @MSLANDERS_HELP
