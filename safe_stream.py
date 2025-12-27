@@ -25,7 +25,7 @@ if not os.path.exists(DOWNLOAD_FOLDER):
 app = Client("SafeStreamBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 
-async def safe_download(url: str, destination: str) -> bool:
+async def download(url: str, destination: str) -> bool:
     """
     Downloads a file safely with retries and timeout.
     Returns True if successful, False otherwise.
@@ -62,7 +62,7 @@ async def handle_file(client: Client, message: Message):
 
     # Get file download URL
     file_url = await message.get_file()
-    success = await safe_download(file_url, destination)
+    success = await download(file_url, destination)
 
     if success:
         await message.reply_text(f"✅ File downloaded successfully: {file_name}")
