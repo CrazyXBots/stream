@@ -3,7 +3,7 @@ from pathlib import Path
 from pyrogram import idle
 import threading
 import restart
-import safe_stream
+
 
 threading.Thread(target=restart.main, daemon=True).start()
 
@@ -83,6 +83,7 @@ if __name__ == '__main__':
         loop.run_until_complete(start())
     except KeyboardInterrupt:
         logging.info('----------------------- Service Stopped -----------------------')
+
 
 
 
