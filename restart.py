@@ -5,7 +5,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-RESTART_INTERVAL = 600  # 10 minutes
+RESTART_INTERVAL = 1800  # 10 minutes
 
 def main():
     logging.info("Bot started with auto-restart enabled")
