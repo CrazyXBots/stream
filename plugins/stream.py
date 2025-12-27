@@ -5,7 +5,7 @@ from database.users_db import db
 from web.utils.file_properties import get_hash
 from pyrogram import Client, filters, enums
 from info import URL, BOT_USERNAME, BIN_CHANNEL, BAN_ALERT, FSUB, CHANNEL
-from utils import get_size
+from web.utils.get_size import get_size
 from Script import script
 from pyrogram.errors import FloodWait
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
