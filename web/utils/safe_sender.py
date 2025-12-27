@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 _send_lock = asyncio.Lock()
 
 
-async def safe_send(
+async def send(
     client: Client,
     chat_id: int,
     text: str,
