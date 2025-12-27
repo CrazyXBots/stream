@@ -10,7 +10,7 @@ from Script import script
 from pyrogram.errors import FloodWait
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from plugins.mslandersbot import is_user_joined, is_user_allowed
-from safe_stream import safe_download
+from safe_stream import download
 from utils.safe_sender import send
 
 #Dont Remove My Credit @MSLANDERS 
